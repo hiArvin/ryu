@@ -90,7 +90,7 @@ class NetworkDelayDetector(app_manager.RyuApp):
         for datapath in self.datapaths.values():
             parser = datapath.ofproto_parser
             echo_req = parser.OFPEchoRequest(datapath,
-                                             data="%.12f" % time.time())
+                                             data=bytes("%.12f" % time.time(), encoding="utf8"))
             datapath.send_msg(echo_req)
             # Important! Don't send echo request together, Because it will
             # generate a lot of echo reply almost in the same time.

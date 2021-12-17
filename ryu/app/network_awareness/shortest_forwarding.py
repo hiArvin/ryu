@@ -157,7 +157,7 @@ class ShortestForwarding(app_manager.RyuApp):
             access_table: {(sw,port) :(ip, mac)}
         """
         if access_table:
-            if isinstance(access_table.values()[0], tuple):
+            if isinstance(list(access_table.values())[0], tuple):
                 for key in access_table.keys():
                     if dst_ip == access_table[key][0]:
                         dst_port = key[1]
@@ -290,7 +290,7 @@ class ShortestForwarding(app_manager.RyuApp):
 
         # inter_link
         if len(path) > 2:
-            for i in xrange(1, len(path)-1):
+            for i in range(1, len(path)-1):
                 port = self.get_port_pair_from_link(link_to_port,
                                                     path[i-1], path[i])
                 port_next = self.get_port_pair_from_link(link_to_port,
@@ -363,6 +363,9 @@ class ShortestForwarding(app_manager.RyuApp):
                                   self.awareness.link_to_port,
                                   self.awareness.access_table, path,
                                   flow_info, msg.buffer_id, msg.data)
+
+        # self.monitor.show_stat(type='flow')
+        self.delay_detector.show_delay_statis()
         return
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)

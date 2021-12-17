@@ -204,7 +204,7 @@ class NetworkAwareness(app_manager.RyuApp):
 
         # Find ksp in graph.
         for src in _graph.nodes():
-            paths.setdefault(src, {src: [[src] for i in xrange(k)]})
+            paths.setdefault(src, {src: [[src] for i in range(k)]})
             for dst in _graph.nodes():
                 if src == dst:
                     continue
@@ -277,40 +277,40 @@ class NetworkAwareness(app_manager.RyuApp):
     def show_topology(self):
         switch_num = len(list(self.graph.nodes()))
         if self.pre_graph != self.graph and setting.TOSHOW:
-            print "---------------------Topo Link---------------------"
-            print '%10s' % ("switch"),
+            print("---------------------Topo Link---------------------")
+            print('%10s' % ("switch"))
             for i in self.graph.nodes():
-                print '%10d' % i,
-            print ""
+                print('%10d' % i)
+            print("")
             for i in self.graph.nodes():
-                print '%10d' % i,
+                print('%10d' % i)
                 for j in self.graph[i].values():
-                    print '%10.0f' % j['weight'],
-                print ""
+                    print('%10.0f' % j['weight'])
+                print("")
             self.pre_graph = copy.deepcopy(self.graph)
 
         if self.pre_link_to_port != self.link_to_port and setting.TOSHOW:
-            print "---------------------Link Port---------------------"
-            print '%10s' % ("switch"),
+            print("---------------------Link Port---------------------")
+            print('%10s' % ("switch"))
             for i in self.graph.nodes():
-                print '%10d' % i,
-            print ""
+                print( '%10d' % i)
+            print("")
             for i in self.graph.nodes():
-                print '%10d' % i,
+                print('%10d' % i)
                 for j in self.graph.nodes():
                     if (i, j) in self.link_to_port.keys():
-                        print '%10s' % str(self.link_to_port[(i, j)]),
+                        print('%10s' % str(self.link_to_port[(i, j)]))
                     else:
-                        print '%10s' % "No-link",
-                print ""
+                        print('%10s' % "No-link")
+                print("")
             self.pre_link_to_port = copy.deepcopy(self.link_to_port)
 
         if self.pre_access_table != self.access_table and setting.TOSHOW:
-            print "----------------Access Host-------------------"
-            print '%10s' % ("switch"), '%12s' % "Host"
+            print("----------------Access Host-------------------")
+            print('%10s' % ("switch"), '%12s' % "Host")
             if not self.access_table.keys():
-                print "    NO found host"
+                print("    NO found host")
             else:
                 for tup in self.access_table:
-                    print '%10d:    ' % tup[0], self.access_table[tup]
+                    print( '%10d:    ' % tup[0], self.access_table[tup])
             self.pre_access_table = copy.deepcopy(self.access_table)
