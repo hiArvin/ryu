@@ -228,11 +228,13 @@ class ShortestForwarding(app_manager.RyuApp):
             # If paths existed, return it, else calculate it and save it.
             try:
                 paths = shortest_paths.get(src).get(dst)
+                tmp_p = self.monitor.best_paths.get(src).get(dst)
                 return paths[0]
             except:
                 paths = self.awareness.k_shortest_paths(graph, src, dst,
                                                         weight=weight)
-
+                tmp_p = self.monitor.get_best_path_by_bw(graph,
+                                                          shortest_paths)
                 shortest_paths.setdefault(src, {})
                 shortest_paths[src].setdefault(dst, paths)
                 return paths[0]
@@ -364,8 +366,9 @@ class ShortestForwarding(app_manager.RyuApp):
                                   self.awareness.access_table, path,
                                   flow_info, msg.buffer_id, msg.data)
 
-        # self.monitor.show_stat(type='flow')
-        self.delay_detector.show_delay_statis()
+
+        # self.monitor.show_stat(type='port')
+        # self.delay_detector.show_delay_statis()
         return
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)

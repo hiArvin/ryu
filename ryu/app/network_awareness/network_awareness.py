@@ -74,7 +74,7 @@ class NetworkAwareness(app_manager.RyuApp):
         i = 0
         while True:
             self.show_topology()
-            if i == 5:
+            if i % 5 == 0:
                 self.get_topology(None)
                 i = 0
             hub.sleep(setting.DISCOVERY_PERIOD)

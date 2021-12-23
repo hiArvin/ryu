@@ -85,7 +85,7 @@ class NetworkDelayDetector(app_manager.RyuApp):
 
     def _send_echo_request(self):
         """
-            Seng echo request msg to datapath.
+            Send echo request msg to datapath.
         """
         for datapath in self.datapaths.values():
             parser = datapath.ofproto_parser

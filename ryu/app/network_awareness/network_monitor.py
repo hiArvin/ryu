@@ -80,7 +80,7 @@ class NetworkMonitor(app_manager.RyuApp):
         """
             Main entry method of monitoring traffic.
         """
-        while CONF.weight == 'bw':
+        while CONF.weight == 'delay':
             self.stats['flow'] = {}
             self.stats['port'] = {}
             for dp in self.datapaths.values():
@@ -358,7 +358,6 @@ class NetworkMonitor(app_manager.RyuApp):
                        ofproto.OFPPR_MODIFY: "modified", }
 
         if reason in reason_dict:
-
             print("switch%d: port %s %s" % (dpid, reason_dict[reason], port_no))
         else:
             print("switch%d: Illeagal port state %s %s" % (port_no, reason))

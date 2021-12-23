@@ -71,7 +71,7 @@ class NetworkUtilityDelayDetector(app_manager.RyuApp):
                 del self.datapaths[datapath.id]
 
 
-    def __monitor(self):
+    def _monitor(self):
         """
             Main entry method of monitoring traffic.
         """
