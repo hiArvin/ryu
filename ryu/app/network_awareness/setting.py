@@ -9,4 +9,4 @@ DELAY_DETECTING_PERIOD = 5			# For detecting link delay.
 
 TOSHOW = True						# For showing information in terminal
 	
-MAX_CAPACITY = 281474976710655		# Max capacity of link
+MAX_CAPACITY = 1000		# Max capacity of link

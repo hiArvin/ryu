@@ -59,6 +59,12 @@ class NetworkMonitor(app_manager.RyuApp):
         # free bandwidth of links respectively.
         self.monitor_thread = hub.spawn(self._monitor)
         self.save_freebandwidth_thread = hub.spawn(self._save_bw_graph)
+        self.bandwidth_thread = hub.spawn(self._bw_monitor)
+
+    def _bw_monitor(self):
+        while True:
+            print("free bandwidth",self.free_bandwidth)
+            hub.sleep(5)
 
     @set_ev_cls(ofp_event.EventOFPStateChange,
                 [MAIN_DISPATCHER, DEAD_DISPATCHER])
@@ -99,7 +105,7 @@ class NetworkMonitor(app_manager.RyuApp):
         """
             Save bandwidth data into networkx graph object.
         """
-        while CONF.weight == 'bw':
+        while CONF.weight == 'delay':
             self.graph = self.create_bw_graph(self.free_bandwidth)
             self.logger.debug("save_freebandwidth")
             hub.sleep(setting.MONITOR_PERIOD)
