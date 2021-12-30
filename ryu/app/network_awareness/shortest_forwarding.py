@@ -30,13 +30,14 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import arp
-
+from ryu.lib import hub
 from ryu.topology import event, switches
 from ryu.topology.api import get_switch, get_link
 
 import network_awareness
 import network_monitor
 import network_delay_detector
+import setting
 
 
 CONF = cfg.CONF
@@ -66,6 +67,8 @@ class ShortestForwarding(app_manager.RyuApp):
         self.delay_detector = kwargs["network_delay_detector"]
         self.datapaths = {}
         self.weight = self.WEIGHT_MODEL[CONF.weight]
+
+        self.display_thread = hub.spawn(self._show_utility_delay)
 
     def set_weight_mode(self, weight):
         """
@@ -358,7 +361,7 @@ class ShortestForwarding(app_manager.RyuApp):
             if dst_sw:
                 # Path has already calculated, just get it.
                 path = self.get_path(src_sw, dst_sw, weight=self.weight)
-                self.logger.info("[PATH]%s<-->%s: %s" % (ip_src, ip_dst, path))
+                # self.logger.info("[PATH]%s<-->%s: %s" % (ip_src, ip_dst, path))
                 flow_info = (eth_type, ip_src, ip_dst, in_port)
                 # install flow entries to datapath along side the path.
                 self.install_flow(self.datapaths,
@@ -368,7 +371,7 @@ class ShortestForwarding(app_manager.RyuApp):
 
 
         # self.monitor.show_stat(type='port')
-        # self.delay_detector.show_delay_statis()
+        # self.show_delay_statis()
         return
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -393,3 +396,28 @@ class ShortestForwarding(app_manager.RyuApp):
             if len(pkt.get_protocols(ethernet.ethernet)):
                 eth_type = pkt.get_protocols(ethernet.ethernet)[0].ethertype
                 self.shortest_forwarding(msg, eth_type, ip_pkt.src, ip_pkt.dst)
+
+    def _show_utility_delay(self):
+        while True:
+            try:
+                print("Now print combinatorial results")
+                for src in self.awareness.graph:
+                    for dst in self.awareness.graph[src]:
+                        if 'delay' in self.awareness.graph[src][dst]:
+                            delay = self.awareness.graph[src][dst]['delay']
+                            if not self.awareness.link_to_port.get((src,dst)):
+                                continue
+                            port = self.awareness.link_to_port[(src,dst)]
+                            speed1 = self.monitor.port_speed[(src,port[0])][-1]*8/10**6
+                            speed2 = self.monitor.port_speed[(dst,port[1])][-1]*8/10**6
+                            thoughput = min(speed1,speed2)
+                            utility = thoughput / setting.LINK_CAPACITY[(src,dst)]
+                            print("%s<-->%s: delay: %.2f ms \t thoughput: %.5f Mbps \t utility: %.5f"
+                                  % (src, dst, delay*10**3,thoughput,utility))
+                        else:
+                            pass
+
+            except:
+                pass
+
+            hub.sleep(4)

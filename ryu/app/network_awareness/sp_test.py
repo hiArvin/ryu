@@ -15,7 +15,6 @@ from ryu import cfg
 import networkx as nx
 import time
 import setting
-import network_awareness
 from operator import attrgetter
 CONF = cfg.CONF
 
@@ -24,8 +23,6 @@ class MyShortestForwarding(app_manager.RyuApp):
     class to achive shortest path to forward, based on minimum hop count
     '''
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-    _CONTEXTS = {
-        "network_awareness": network_awareness.NetworkAwareness}
 
     def __init__(self,*args,**kwargs):
         super(MyShortestForwarding,self).__init__(*args,**kwargs)
@@ -34,7 +31,23 @@ class MyShortestForwarding(app_manager.RyuApp):
         self.network = nx.DiGraph()        #store the dj graph
         self.paths = {}        #store the shortest path
         self.topology_api_app = self
+        # ====================================================================================
+        # for network awareness
+        self.link_to_port = {}  # (src_dpid,dst_dpid)->(src_port,dst_port)
+        self.access_table = {}  # {(sw,port) :[host1_ip]}
+        self.switch_port_table = {}  # dpip->port_num
+        self.access_ports = {}  # dpid->port_num
+        self.interior_ports = {}  # dpid->port_num
 
+        self.graph = nx.DiGraph()
+        self.pre_graph = nx.DiGraph()
+        self.pre_access_table = {}
+        self.pre_link_to_port = {}
+        self.shortest_paths = None
+        # Start a green thread to discover network resource.
+        self.discover_thread = hub.spawn(self._discover)
+
+        # ====================================================================================
         self.datapaths = {}
         self.port_stats = {}
         self.port_speed = {}
@@ -45,13 +58,16 @@ class MyShortestForwarding(app_manager.RyuApp):
 
         self.sending_echo_request_interval = 0.05
         self.sw_module = lookup_service_brick('switches')
-        self.awareness = kwargs['network_awareness']
         self.echo_latency = {}
 
         self.monitor_thread = hub.spawn(self._monitor)
 
         self.measure_thread = hub.spawn(self._detector)
 
+
+    '''
+        for all the programme
+    '''
     @set_ev_cls(ofp_event.EventOFPStateChange,
                 [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def _state_change_handler(self, ev):
@@ -67,6 +83,8 @@ class MyShortestForwarding(app_manager.RyuApp):
             if datapath.id in self.datapaths:
                 self.logger.debug('unregister datapath: %016x', datapath.id)
                 del self.datapaths[datapath.id]
+
+
 
     def _detector(self):
         """
@@ -162,6 +180,7 @@ class MyShortestForwarding(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn,MAIN_DISPATCHER)
     def packet_in_handler(self,ev):
+        print('111')
         msg = ev.msg
         try:
             src_dpid, src_port_no = LLDPPacket.lldp_parse(msg.data)
@@ -181,8 +200,6 @@ class MyShortestForwarding(app_manager.RyuApp):
         try:
             self.awareness.graph[src][dst]['lldpdelay'] = lldpdelay
         except:
-            if self.awareness is None:
-                self.awareness = network_awareness.NetworkAwareness()
             return
     '''
         以下是利用率的测量
@@ -382,6 +399,7 @@ class MyShortestForwarding(app_manager.RyuApp):
         manage the packet which comes from switch
         '''
         #first get event infomation
+        print(222)
         msg = ev.msg
         datapath = msg.datapath
         ofproto = datapath.ofproto
@@ -411,25 +429,123 @@ class MyShortestForwarding(app_manager.RyuApp):
 
         datapath.send_msg(out)
 
-    @set_ev_cls(event.EventSwitchEnter,[CONFIG_DISPATCHER,MAIN_DISPATCHER])    #event is not from openflow protocol, is come from switchs` state changed, just like: link to controller at the first time or send packet to controller
+
+    '''
+        for network awareness
+    '''
+    def _discover(self):
+        i = 0
+        while True:
+            if i % 5 == 0:
+                self.get_topology(None)
+                i = 0
+            hub.sleep(setting.DISCOVERY_PERIOD)
+            i = i + 1
+
+    @set_ev_cls(event.EventSwitchEnter,[CONFIG_DISPATCHER,MAIN_DISPATCHER])
+    # event is not from openflow protocol, is come from switchs` state changed,
+    # just like: link to controller at the first time or send packet to controller
     def get_topology(self,ev):
-        '''
-        get network topo construction, save info in the dict
-        '''
+        """
+            Get topology info and calculate shortest paths.
+        """
+        switch_list = get_switch(self.topology_api_app, None)
+        self.create_port_map(switch_list)
+        self.switches = self.switch_port_table.keys()
+        links = get_link(self.topology_api_app, None)
+        self.create_interior_links(links)
+        self.create_access_ports()
+        self.get_graph(self.link_to_port.keys())
+        self.shortest_paths = self.all_k_shortest_paths(
+            self.graph, weight='weight', k=CONF.k_paths)
 
-        #store nodes info into the Graph
-        switch_list = get_switch(self.topology_api_app,None)    #------------need to get info,by debug
-        switches = [switch.dp.id for switch in switch_list]
-        self.network.add_nodes_from(switches)
+    def create_port_map(self, switch_list):
+        """
+            Create interior_port table and access_port table.
+        """
+        for sw in switch_list:
+            dpid = sw.dp.id
+            self.switch_port_table.setdefault(dpid, set())
+            self.interior_ports.setdefault(dpid, set())
+            self.access_ports.setdefault(dpid, set())
 
-        #store links info into the Graph
-        link_list = get_link(self.topology_api_app,None)
-        #port_no, in_port    ---------------need to debug, get diffirent from  both
-        links = [(link.src.dpid,link.dst.dpid,{'attr_dict':{'port':link.dst.port_no}}) for link in link_list]    #add edge, need src,dst,weigtht
-        self.network.add_edges_from(links)
+            for p in sw.ports:
+                self.switch_port_table[dpid].add(p.port_no)
 
-        links  = [(link.dst.dpid,link.src.dpid,{'attr_dict':{'port':link.dst.port_no}}) for link in link_list]
-        self.network.add_edges_from(links)
+    def create_interior_links(self, link_list):
+        """
+            Get links`srouce port to dst port  from link_list,
+            link_to_port:(src_dpid,dst_dpid)->(src_port,dst_port)
+        """
+        for link in link_list:
+            src = link.src
+            dst = link.dst
+            self.link_to_port[
+                (src.dpid, dst.dpid)] = (src.port_no, dst.port_no)
+
+            # Find the access ports and interiorior ports
+            if link.src.dpid in self.switches:
+                self.interior_ports[link.src.dpid].add(link.src.port_no)
+            if link.dst.dpid in self.switches:
+                self.interior_ports[link.dst.dpid].add(link.dst.port_no)
+
+    def create_access_ports(self):
+        """
+            Get ports without link into access_ports
+        """
+        for sw in self.switch_port_table:
+            all_port_table = self.switch_port_table[sw]
+            interior_port = self.interior_ports[sw]
+            self.access_ports[sw] = all_port_table - interior_port
+
+    def get_graph(self, link_list):
+        """
+            Get Adjacency matrix from link_to_port
+        """
+        for src in self.switches:
+            for dst in self.switches:
+                if src == dst:
+                    self.graph.add_edge(src, dst, weight=0)
+                elif (src, dst) in link_list:
+                    self.graph.add_edge(src, dst, weight=1)
+        return self.graph
+
+    def k_shortest_paths(self, graph, src, dst, weight='weight', k=1):
+        """
+            Great K shortest paths of src to dst.
+        """
+        generator = nx.shortest_simple_paths(graph, source=src,
+                                             target=dst, weight=weight)
+        shortest_paths = []
+        try:
+            for path in generator:
+                if k <= 0:
+                    break
+                shortest_paths.append(path)
+                k -= 1
+            return shortest_paths
+        except:
+            self.logger.debug("No path between %s and %s" % (src, dst))
+
+    def all_k_shortest_paths(self, graph, weight='weight', k=1):
+        """
+            Creat all K shortest paths between datapaths.
+        """
+        _graph = copy.deepcopy(graph)
+        paths = {}
+
+        # Find ksp in graph.
+        for src in _graph.nodes():
+            paths.setdefault(src, {src: [[src] for i in range(k)]})
+            for dst in _graph.nodes():
+                if src == dst:
+                    continue
+                paths[src].setdefault(dst, [])
+                paths[src][dst] = self.k_shortest_paths(_graph, src, dst,
+                                                        weight=weight, k=k)
+        return paths
+    ######################################################################
+
 
     def get_out_port(self,datapath,src,dst,in_port):
         '''
